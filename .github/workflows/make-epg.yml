@@ -1,0 +1,54 @@
+name: make-epg
+
+on:
+  watch:
+    types: [started]
+  schedule:
+    - cron: "0 2 * * *"
+  # push:
+  #   branches:
+  #     - 'master'
+  # pull_request:
+
+jobs:
+  make-epg:
+    runs-on: ubuntu-20.04
+    if: (github.event_name != 'watch') || (github.actor == github.event.repository.owner.login)
+    steps:
+      -
+        name: Setup Python
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -yqq python3-bs4 python3-lxml python3-requests
+      -
+        name: Checkout
+        uses: actions/checkout@v2
+      - 
+        name: Generate Channel.json
+        id: chjson
+        run: |
+          cd ..
+          RESULT=$(bash ./KLive/xml/make_channel.json.sh)
+          echo "${RESULT}"
+          RESULT="${RESULT//'%'/'%25'}"
+          RESULT="${RESULT//$'\n'/'%0A'}"
+          RESULT="${RESULT//$'\r'/'%0D'}"
+          echo ::set-output name=result::${RESULT}
+          echo ::set-output name=today::$(date -u +'%Y-%m-%d')
+      - 
+        name: Run epg2xml.py
+        run: |
+          cd ..
+          python3 ./KLive/xml/epg2xml.py --loglevel DEBUG --logfile /tmp/epg2xml.log
+      - 
+        name: Clean Up
+        run: |
+          rm ./Channel/Channel.json
+          rm ./xml/Channel*.json
+      -
+        name: Commit changes
+        uses: EndBug/add-and-commit@v7
+        with:
+          message: |
+            ${{ steps.chjson.outputs.today }}
+            ${{ steps.chjson.outputs.result }}
